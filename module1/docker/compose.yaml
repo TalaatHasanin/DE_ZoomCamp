@@ -7,7 +7,7 @@ services:
     environment:
       - POSTGRES_USER=root
       - POSTGRES_PASSWORD=root
-      - POSTGRES_DB=new_db
+      - POSTGRES_DB=ny_taxi
     volumes:
       - "./ny_taxi_postgres_data:/var/lib/postgresql/data:rw"
     ports:
@@ -29,5 +29,6 @@ services:
       --password=root
       --host=pgdatabase
       --port=5432
-      --db=new_db
+      --db=ny_taxi
       --table_name=yellow_taxi_trips
+      --url=https://github.com/DataTalksClub/nyc-tlc-data/releases/download/yellow/yellow_tripdata_2021-01.csv.gz

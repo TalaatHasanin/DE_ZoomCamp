@@ -1,63 +1,78 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+import os
+import argparse
+
 from time import time
+
 import pandas as pd
 from sqlalchemy import create_engine
-import argparse
 
 
 def main(params):
     user = params.user
     password = params.password
     host = params.host
-    db = params.db
     port = params.port
+    db = params.db
     table_name = params.table_name
+    url = params.url
 
-    csv_name = 'output.csv'
+    # the backup files are gzipped, and it's important to keep the correct extension
+    # for pandas to be able to open the file
+    if url.endswith('.csv.gz'):
+        csv_name = 'output.csv.gz'
+    else:
+        csv_name = 'output.csv'
 
-    # download the data
-    # os.system(f"wget {url} -O {csv_name}")
+    os.system(f"wget {url} -O {csv_name}")
 
-    # create postgres engine
     engine = create_engine(f'postgresql://{user}:{password}@{host}:{port}/{db}')
 
-    # add dataframe iterator to split data into chunks
     df_iter = pd.read_csv(csv_name, iterator=True, chunksize=100000, compression='gzip')
 
-    # df variable will contain each chunk in the dataframe using next builtin pointer
     df = next(df_iter)
 
-    # some preprocessing to convert text date into timestamps
     df.tpep_pickup_datetime = pd.to_datetime(df.tpep_pickup_datetime)
     df.tpep_dropoff_datetime = pd.to_datetime(df.tpep_dropoff_datetime)
 
-    # create a table in the postgres database with the headers of the dataframe
     df.head(n=0).to_sql(name=table_name, con=engine, if_exists='replace')
 
-    # while loop to insert data into pg DB
+    df.to_sql(name=table_name, con=engine, if_exists='append')
+
     while True:
-        df = next(df_iter)
-        t_begin = time()
 
-        df.tpep_pickup_datetime = pd.to_datetime(df.tpep_pickup_datetime)
-        df.tpep_dropoff_datetime = pd.to_datetime(df.tpep_dropoff_datetime)
+        try:
+            t_start = time()
 
-        df.to_sql(name=table_name, con=engine, if_exists='append')
-        t_end = time()
+            df = next(df_iter)
 
-        print(f'inserted another chunk...., took {t_end - t_begin:.3f}')
+            df.tpep_pickup_datetime = pd.to_datetime(df.tpep_pickup_datetime)
+            df.tpep_dropoff_datetime = pd.to_datetime(df.tpep_dropoff_datetime)
+
+            df.to_sql(name=table_name, con=engine, if_exists='append')
+
+            t_end = time()
+
+            print('inserted another chunk, took %.3f second' % (t_end - t_start))
+
+        except StopIteration:
+            print("Finished ingesting data into the postgres database")
+            break
 
 
 if __name__ == '__main__':
-    # init argument parser to get engine args
-    parser = argparse.ArgumentParser(description='Ingest data from csv to postgres.')
+    parser = argparse.ArgumentParser(description='Ingest CSV data to Postgres')
 
-    # Args => user, password, host, port, DB name, table name, csv url
-    parser.add_argument('--user', help='user name for postgres')
-    parser.add_argument('--password', help='password for postgres')
-    parser.add_argument('--host', help='host for postgres')
-    parser.add_argument('--port', help='port for postgres')
-    parser.add_argument('--db', help='database name for postgres')
-    parser.add_argument('--table_name', help='table name for postgres')
+    parser.add_argument('--user', required=True, help='user name for postgres')
+    parser.add_argument('--password', required=True, help='password for postgres')
+    parser.add_argument('--host', required=True, help='host for postgres')
+    parser.add_argument('--port', required=True, help='port for postgres')
+    parser.add_argument('--db', required=True, help='database name for postgres')
+    parser.add_argument('--table_name', required=True, help='name of the table where we will write the results to')
+    parser.add_argument('--url', required=True, help='url of the csv file')
 
     args = parser.parse_args()
+
     main(args)
